@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Lista de Tareas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Estilos existentes */
+        .completed {
+            text-decoration: line-through;
+            opacity: 0.6;
+        }
+        .dragging {
+            opacity: 0.5;
+        }
+        .striped-list .list-group-item:nth-child(odd) {
+            background-color: #f8f9fa;
+        }
+        .striped-list .list-group-item:nth-child(even) {
+            background-color: #e9ecef;
+        }
+        .list-group-item:hover {
+            background-color: #fff2b7 !important;
+            transition: background-color 0.3s linear;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .sticky-header {
+            position: -webkit-sticky;
+            position: sticky;
+            top: 0;
+            z-index: 1000; 
+            background-color: white;
+            padding: 12px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background-color: #f8f9fa;
+            padding: -10px 0;
+        }
+        /* Nuevos estilos */
+        .deadline {
+            font-size: 0.9em;
+            color: #dc3545;
+            margin-left: 10px;
+        }
+        .edit-input {
+            width: 100%;
+            margin-right: 10px;
+        }
+        /* Estilo para el reloj */
+        .clock {
+            font-size: 1.2em;
+            text-align: center;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5 mb-5">
+
+        <h1 class="text-center mb-4">Lista de Tareas</h1>
+
+        <!-- Sticky Header para agregar tareas -->
+         
+        <!-- Reloj en tiempo real -->
+        <div class="sticky-header">
+            <div id="clock" class="clock"></div>
+            <div class="row g-2">
+                <div class="col-12 col-md-5">
+                    <input id="todo-input" type="text" class="form-control" placeholder="Añadir una nueva tarea">
+                </div>
+                <div class="col-12 col-md-5">
+                    <input id="deadline-input" type="datetime-local" class="form-control" placeholder="Fecha y hora límite (opcional)" title="Establece una fecha y hora límite para la tarea (opcional)">
+                </div>
+                <div class="col-12 col-md-2 d-grid">
+                    <button class="btn btn-primary" onclick="addTask()">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <ul id="todo-list" class="list-group striped-list">
+            <!-- Las tareas se insertarán aquí -->
+        </ul>
+    </div>
+
+    <!-- Footer con funcionalidad de importar y exportar -->
+    <footer class="footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8 mb-3 mb-md-0">
+                    <input type="file" id="import-file" accept=".json" class="form-control" onchange="importTasks(this)">
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <button class="btn btn-secondary" onclick="exportTasks()">
+                        <i class="fas fa-file-export"></i> Exportar Tareas
+                    </button>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Código JavaScript -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const messages = [
+                /* Tus mensajes existentes */
+                "Añadir una nueva tarea",
+                "Escribe algo por hacer",
+                "¿Qué necesitas hacer hoy?",
+                "Añade tu próxima tarea",
+                "Tarea pendiente",
+                "Escribe una tarea aquí",
+                "Agrega algo a tu lista",
+                "Introduce una nueva tarea",
+                "¿Qué falta por hacer?",
+                "Nueva tarea a completar",
+                "Escribe tu pendiente",
+                "¿Qué hay que hacer ahora?",
+                "Añade algo a tu lista de tareas",
+                "Planifica tu siguiente paso",
+                "Nueva tarea, nueva meta",
+                "Escribe tu próximo objetivo",
+                "Tarea importante aquí",
+                "No olvides hacer esto",
+                "Agrega un recordatorio",
+                "¿Qué necesitas completar?",
+                "¡Órale, no te hagas! Añade una tarea.",
+                "Ponle algo, antes de que se te olvide.",
+                "No te hagas el que no tienes pendientes, ¡añade algo!",
+                "Escribe esa tarea que llevas posponiendo.",
+                "Ándale, ¿qué falta por hacer? ¡Escribe aquí!",
+                "Tu lista de pendientes te está esperando...",
+                "¿Otra vez dejando todo para después? Escribe algo.",
+                "Ponle algo antes de que el mundo se acabe.",
+                "¡Anota eso que dijiste que harías mañana!",
+                "¿Y ahora qué excusa vas a poner? ¡Escribe la tarea!"
+            ];
+
+            // Seleccionar un mensaje aleatorio
+            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+
+            // Establecer el placeholder al mensaje aleatorio
+            document.getElementById("todo-input").setAttribute("placeholder", randomMessage);
+
+            // Iniciar el reloj
+            startClock();
+
+            // Cargar tareas desde el localStorage al cargar la página
+            loadTasks();
+        });
+
+        // Función para iniciar el reloj
+        function startClock() {
+            const clockElement = document.getElementById("clock");
+            setInterval(() => {
+                const now = new Date();
+                const options = {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                };
+                const formattedTime = now.toLocaleDateString('es-ES', options);
+                clockElement.textContent = formattedTime.charAt(0).toUpperCase() + formattedTime.slice(1);
+            }, 1000);
+        }
+
+        // Función para formatear fechas
+        function formatDateFromUTC(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('es-ES', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // Generar un UUID para cada tarea
+        function generateUUID() {
+            let d = new Date().getTime();
+            let d2 = (performance && performance.now && (performance.now() * 1000)) || 0;
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                let r = Math.random() * 16;
+                if (d > 0) {
+                    r = (d + r) % 16 | 0;
+                    d = Math.floor(d / 16);
+                } else {
+                    r = (d2 + r) % 16 | 0;
+                    d2 = Math.floor(d2 / 16);
+                }
+                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            });
+        }
+
+        // Función para agregar tarea
+        function addTask() {
+            const input = document.getElementById("todo-input");
+            const deadlineInput = document.getElementById("deadline-input");
+            const text = input.value.trim();
+            const deadlineLocal = deadlineInput.value ? deadlineInput.value : null;
+
+            if (text === "") return;
+
+            const nowUTC = new Date().toISOString();
+
+            let deadlineUTC = null;
+            if (deadlineLocal) {
+                const deadlineDate = new Date(deadlineLocal);
+                deadlineUTC = deadlineDate.toISOString();
+            }
+
+            const task = {
+                id: generateUUID(),
+                text: text,
+                completed: false,
+                creado: nowUTC,
+                update: nowUTC,
+                fecha_limite: deadlineUTC
+            };
+
+            // Guardar tarea en localStorage
+            saveTask(task);
+
+            // Crear elemento de tarea
+            createTaskElement(task);
+
+            // Limpiar los campos de entrada
+            input.value = "";
+            deadlineInput.value = "";
+        }
+
+        // Guardar tarea en localStorage
+        function saveTask(task) {
+            let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+            tasks.push(task);
+            localStorage.setItem("tasks", JSON.stringify(tasks));
+        }
+
+        // Cargar tareas desde localStorage
+        function loadTasks() {
+            let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+            tasks.forEach(task => {
+                createTaskElement(task);
+            });
+        }
+
+        // Inside the createTaskElement function
+        function createTaskElement(task) {
+            const taskItem = document.createElement("li");
+            taskItem.className = "list-group-item d-flex justify-content-between align-items-center fade-in";
+            taskItem.dataset.id = task.id;
+
+            // Tooltip for completed date
+            if (task.completed) {
+                taskItem.title = "Terminada el " + formatDateFromUTC(task.update);
+            } else {
+                taskItem.title = "";
+            }
+
+            if (task.completed) {
+                taskItem.classList.add("completed");
+            }
+
+            // Task content
+            const taskContent = document.createElement("span");
+            taskContent.textContent = task.text;
+
+            // Show deadline if it exists
+            if (task.fecha_limite) {
+                const deadlineSpan = document.createElement("span");
+                deadlineSpan.className = "deadline";
+                deadlineSpan.textContent = " (Fecha límite: " + formatDateFromUTC(task.fecha_limite) + ")";
+                taskContent.appendChild(deadlineSpan);
+            }
+
+            const buttonGroup = document.createElement("div");
+            buttonGroup.className = "btn-group";
+
+            // **Edit button**
+            const editButton = document.createElement("button");
+            editButton.className = "btn btn-warning btn-sm";
+            editButton.onclick = function() {
+                editTask(this);
+            };
+            editButton.innerHTML = '<i class="fas fa-edit"></i>';
+
+            // **Complete/Save button**
+            const toggleButton = document.createElement("button");
+            toggleButton.className = "btn btn-success btn-sm";
+            toggleButton.onclick = function() {
+                toggleTask(this);
+            };
+            toggleButton.innerHTML = '<i class="fas fa-check"></i>';
+
+            // **Delete button**
+            const removeButton = document.createElement("button");
+            removeButton.className = "btn btn-danger btn-sm";
+            removeButton.onclick = function() {
+                removeTask(this);
+            };
+            removeButton.innerHTML = '<i class="fas fa-trash"></i>';
+
+            // Append buttons to button group
+            buttonGroup.appendChild(editButton);
+            buttonGroup.appendChild(toggleButton);
+            buttonGroup.appendChild(removeButton);
+
+            taskItem.appendChild(taskContent);
+            taskItem.appendChild(buttonGroup);
+
+            const todoList = document.getElementById("todo-list");
+            todoList.appendChild(taskItem);
+        }
+
+
+        // Alternar estado de tarea completada
+        function toggleTask(button) {
+            const taskItem = button.closest("li");
+            const taskId = taskItem.dataset.id;
+
+            taskItem.classList.toggle("completed");
+
+            // Actualizar tarea en localStorage
+            let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+            tasks = tasks.map(task => {
+                if (task.id === taskId) {
+                    task.completed = !task.completed;
+                    task.update = new Date().toISOString();
+
+                    // Actualizar tooltip
+                    if (task.completed) {
+                        taskItem.title = "Terminada el " + formatDateFromUTC(task.update);
+                    } else {
+                        taskItem.title = "";
+                    }
+                }
+                return task;
+            });
+            localStorage.setItem("tasks", JSON.stringify(tasks));
+        }
+
+        // Eliminar tarea
+        function removeTask(button) {
+            const taskItem = button.closest("li");
+            const taskId = taskItem.dataset.id;
+
+            // Remover tarea del DOM
+            taskItem.remove();
+
+            // Remover tarea del localStorage
+            let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+            tasks = tasks.filter(task => task.id !== taskId);
+            localStorage.setItem("tasks", JSON.stringify(tasks));
+        }
+
+        // Función para editar tarea
+        function editTask(button) {
+            const taskItem = button.closest("li");
+            const taskId = taskItem.dataset.id;
+            console.log(taskId);
+            let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+            const task = tasks.find(t => t.id === taskId);
+            console.log(task);
+            const taskContent = taskItem.querySelector("span");
+            const originalText = task.text;
+
+            // Create input for editing
+            const editInput = document.createElement("input");
+            editInput.type = "text";
+            editInput.className = "form-control edit-input";
+            editInput.value = originalText;
+
+            // Replace the text content with the edit input
+            taskItem.replaceChild(editInput, taskContent);
+
+            // Change the edit button to a save button
+            const buttonGroup = taskItem.querySelector(".btn-group");
+            const editButton = buttonGroup.querySelector(".btn-warning");
+            editButton.innerHTML = '<i class="fas fa-save"></i>';
+            editButton.classList.remove("btn-warning");
+            editButton.classList.add("btn-primary");
+            editButton.onclick = function() {
+                saveEditedTask(this);
+            };
+
+            // Optionally, disable the complete and delete buttons while editing
+            const toggleButton = buttonGroup.querySelector(".btn-success");
+            const removeButton = buttonGroup.querySelector(".btn-danger");
+            toggleButton.disabled = true;
+            removeButton.disabled = true;
+        }
+
+
+        // Guardar tarea editada
+        function saveEditedTask(button) {
+            const taskItem = button.closest("li");
+            const taskId = taskItem.dataset.id;
+            const editInput = taskItem.querySelector(".edit-input");
+            const newText = editInput.value.trim();
+
+            if (newText === "") return;
+
+            // Update the task in localStorage
+            let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+            tasks = tasks.map(task => {
+                if (task.id === taskId) {
+                    task.text = newText;
+                    task.update = new Date().toISOString();
+                }
+                return task;
+            });
+            localStorage.setItem("tasks", JSON.stringify(tasks));
+
+            // Restore the task content
+            const taskContent = document.createElement("span");
+            taskContent.textContent = newText;
+
+            // Re-add the deadline if it exists
+            let task = tasks.find(t => t.id === taskId);
+            if (task.fecha_limite) {
+                const deadlineSpan = document.createElement("span");
+                deadlineSpan.className = "deadline";
+                deadlineSpan.textContent = " (Fecha límite: " + formatDateFromUTC(task.fecha_limite) + ")";
+                taskContent.appendChild(deadlineSpan);
+            }
+
+            // Replace the input with the updated text
+            taskItem.replaceChild(taskContent, editInput);
+
+            // Restore the edit button
+            const buttonGroup = taskItem.querySelector(".btn-group");
+            const editButton = buttonGroup.querySelector(".btn-primary");
+            editButton.innerHTML = '<i class="fas fa-edit"></i>';
+            editButton.classList.remove("btn-primary");
+            editButton.classList.add("btn-warning");
+            editButton.onclick = function() {
+                editTask(this);
+            };
+
+            // Re-enable the complete and delete buttons
+            const toggleButton = buttonGroup.querySelector(".btn-success");
+            const removeButton = buttonGroup.querySelector(".btn-danger");
+            toggleButton.disabled = false;
+            removeButton.disabled = false;
+        }
+
+
+        // Exportar tareas a un archivo JSON
+        function exportTasks() {
+            let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+            if (tasks.length === 0) {
+                alert("No hay tareas para exportar.");
+                return;
+            }
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(tasks));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "tareas.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        // Importar tareas desde un archivo JSON
+        function importTasks(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const importedTasks = JSON.parse(e.target.result);
+                    let existingTasks = JSON.parse(localStorage.getItem("tasks")) || [];
+
+                    // Fusionar tareas sin duplicados
+                    const mergedTasks = [...existingTasks];
+                    importedTasks.forEach(importedTask => {
+                        if (!existingTasks.some(task => task.id === importedTask.id)) {
+                            mergedTasks.push(importedTask);
+                            createTaskElement(importedTask);
+                        }
+                    });
+
+                    localStorage.setItem("tasks", JSON.stringify(mergedTasks));
+                    alert("Tareas importadas exitosamente.");
+                } catch (error) {
+                    alert("Error al importar tareas: " + error.message);
+                }
+                // Limpiar el valor del input
+                input.value = "";
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
